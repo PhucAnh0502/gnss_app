@@ -1,0 +1,66 @@
+# Standard Flutter / Dart app ignores
+# Keep pubspec.lock committed for application projects.
+
+# Dart/Flutter tool state
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub/
+.pub-cache/
+
+# Build outputs
+/build/
+/**/build/
+/coverage/
+
+# Generated plugin registrant
+GeneratedPluginRegistrant.*
+**/GeneratedPluginRegistrant.*
+
+# iOS
+ios/Flutter/.last_build_id
+ios/Pods/
+ios/Runner.xcworkspace/
+DerivedData/
+
+# Android
+android/.gradle/
+android/app/build/
+/android/app/debug
+/android/app/profile
+/android/app/release
+android/local.properties
+local.properties
+
+# IDE and editor files
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+
+# Platform and local files
+.DS_Store
+Thumbs.db
+
+# Logs and temp
+*.log
+*.swp
+
+# Secrets and local env files
+.env
+.env.dev
+.env.prod
+
+# Symbolication / obfuscation artifacts
+app.*.symbols
+app.*.map.json
+
+# Misc
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
