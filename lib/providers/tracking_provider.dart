@@ -1,84 +1,145 @@
-import 'dart:async';
-
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:gnss_app/constants/app_constants.dart';
-import 'package:gnss_app/services/gnss_service.dart';
-import 'package:gnss_app/services/mqtt_service.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-final gnssServiceProvider = Provider<GnssService>((ref) => GnssService());
-final mqttServiceProvider = Provider<MqttService>((ref) => MqttService());
+import '../services/gnss_service.dart';
+import '../services/tracking_background_service.dart';
+
+const _trackingEnabledKey = 'tracking_enabled';
+const _trackingDeviceCodeKey = 'tracking_device_code';
+
+final trackingProvider =
+    StateNotifierProvider<TrackingNotifier, TrackingState>((ref) {
+  final notifier = TrackingNotifier();
+  notifier.bootstrap();
+  return notifier;
+});
 
 class TrackingState {
-  final bool isTracking;
-  final bool isMqttConnecting;
-  final bool isMqttConnected;
-  final String? deviceCode;
-  final Map<String, dynamic> snapshot;
-  final List<String> logs;
-  final String? errorMessage;
-
   const TrackingState({
     this.isTracking = false,
-    this.isMqttConnecting = false,
     this.isMqttConnected = false,
+    this.isMqttConnecting = false,
+    this.isBusy = false,
     this.deviceCode,
-    this.snapshot = const {
-      'tracking': <String, dynamic>{},
-      'raw': {
-        'status': <dynamic>[],
-        'measurements': <dynamic>[],
-        'clock': <String, dynamic>{},
-      },
-    },
-    this.logs = const [],
     this.errorMessage,
   });
 
+  final bool isTracking;
+  final bool isMqttConnected;
+  final bool isMqttConnecting;
+  final bool isBusy;
+  final String? deviceCode;
+  final String? errorMessage;
+
   TrackingState copyWith({
     bool? isTracking,
-    bool? isMqttConnecting,
     bool? isMqttConnected,
+    bool? isMqttConnecting,
+    bool? isBusy,
     String? deviceCode,
-    Map<String, dynamic>? snapshot,
-    List<String>? logs,
     String? errorMessage,
     bool clearError = false,
-    bool clearDeviceCode = false,
   }) {
     return TrackingState(
       isTracking: isTracking ?? this.isTracking,
-      isMqttConnecting: isMqttConnecting ?? this.isMqttConnecting,
       isMqttConnected: isMqttConnected ?? this.isMqttConnected,
-      deviceCode: clearDeviceCode ? null : (deviceCode ?? this.deviceCode),
-      snapshot: snapshot ?? this.snapshot,
-      logs: logs ?? this.logs,
+      isMqttConnecting: isMqttConnecting ?? this.isMqttConnecting,
+      isBusy: isBusy ?? this.isBusy,
+      deviceCode: deviceCode ?? this.deviceCode,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }
 
 class TrackingNotifier extends StateNotifier<TrackingState> {
-  final GnssService _gnssService;
-  final MqttService _mqttService;
-  Timer? _refreshTimer;
-  Timer? _publishTimer;
+  TrackingNotifier() : super(const TrackingState());
 
-  TrackingNotifier(this._gnssService, this._mqttService)
-      : super(const TrackingState());
+  Future<void> bootstrap() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isEnabled = prefs.getBool(_trackingEnabledKey) ?? false;
+      final storedDeviceCode = prefs.getString(_trackingDeviceCodeKey)?.trim();
+      final resolvedDeviceCode = storedDeviceCode?.isNotEmpty == true
+          ? storedDeviceCode
+          : await _resolveAndroidDeviceCode();
 
-  Future<void> startTracking({
-    String? deviceCode,
-  }) async {
-    await stopTracking();
+      state = state.copyWith(
+        isTracking: isEnabled,
+        deviceCode: resolvedDeviceCode?.isNotEmpty == true
+            ? resolvedDeviceCode
+            : null,
+        clearError: true,
+      );
 
-    final resolvedDeviceCode = deviceCode?.trim() ?? '';
+      if (isEnabled) {
+        await _startBackgroundTracking(deviceCode: resolvedDeviceCode);
+      } else {
+        await TrackingBackgroundService.stop();
+      }
+    } catch (e) {
+      state = state.copyWith(errorMessage: e.toString());
+    }
+  }
+
+  Future<bool> setTrackingEnabled(bool enabled) async {
+    state = state.copyWith(isBusy: true, clearError: true);
+
+    try {
+      if (enabled) {
+        final notificationPermission = await Permission.notification.request();
+        if (!notificationPermission.isGranted) {
+          throw Exception('Notification permission is required to keep tracking running in background.');
+        }
+
+        final deviceCode = await _resolveAndroidDeviceCode();
+        if (deviceCode == null || deviceCode.isEmpty) {
+          throw Exception('Không thể lấy device code của thiết bị Android này.');
+        }
+
+        await _startBackgroundTracking(deviceCode: deviceCode);
+        return true;
+      }
+
+      await TrackingBackgroundService.stop();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_trackingEnabledKey, false);
+
+      state = state.copyWith(
+        isTracking: false,
+        isBusy: false,
+        isMqttConnected: false,
+        isMqttConnecting: false,
+        clearError: true,
+      );
+      return true;
+    } catch (e) {
+      await TrackingBackgroundService.stop();
+      state = state.copyWith(
+        isTracking: false,
+        isBusy: false,
+        errorMessage: e.toString(),
+      );
+      return false;
+    }
+  }
+
+  Future<void> _startBackgroundTracking({String? deviceCode}) async {
+    final resolvedDeviceCode =
+        deviceCode ?? await _resolveAndroidDeviceCode() ?? '';
 
     if (resolvedDeviceCode.isEmpty) {
-      state = state.copyWith(errorMessage: 'Device code is required.');
-      _addLog('Cannot start tracking: device code is empty.');
-      return;
+      throw Exception('Không thể khởi tạo tracking khi chưa có device code.');
     }
+
+    final gnssService = GnssService();
+    await gnssService.ensureLocationPermission();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_trackingEnabledKey, true);
+    await prefs.setString(_trackingDeviceCodeKey, resolvedDeviceCode);
 
     state = state.copyWith(
       isTracking: true,
@@ -88,124 +149,31 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       clearError: true,
     );
 
-    try {
-      await _gnssService.startCollection();
-    } catch (error) {
-      state = state.copyWith(
-        isTracking: false,
-        isMqttConnecting: false,
-        isMqttConnected: false,
-        clearDeviceCode: true,
-        errorMessage: error.toString(),
-      );
-      _addLog('GNSS start failed: $error');
-      return;
-    }
+    await TrackingBackgroundService.initialize();
+    await TrackingBackgroundService.start(deviceCode: resolvedDeviceCode);
 
-    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _refreshSnapshot();
-    });
-
-    try {
-      final connected = await _mqttService.connect(resolvedDeviceCode);
-      state = state.copyWith(
-        isMqttConnecting: false,
-        isMqttConnected: connected,
-      );
-      if (!connected) {
-        _addLog('MQTT connection failed.');
-        return;
-      }
-    } catch (error) {
-      state = state.copyWith(
-        isMqttConnecting: false,
-        isMqttConnected: false,
-        errorMessage: error.toString(),
-      );
-      _addLog('MQTT connect error: $error');
-      return;
-    }
-
-    _publishTimer?.cancel();
-    _publishTimer = Timer.periodic(
-      Duration(seconds: AppConstants.sendIntervalSeconds),
-      (_) {
-        _publishTelemetry();
-      },
-    );
-
-    _addLog('Tracking started for deviceCode=$resolvedDeviceCode');
-  }
-
-  Future<void> stopTracking() async {
-    _refreshTimer?.cancel();
-    _refreshTimer = null;
-    _publishTimer?.cancel();
-    _publishTimer = null;
-    _gnssService.stopCollection();
-    _mqttService.disconnect();
     state = state.copyWith(
-      isTracking: false,
+      isTracking: true,
+      isBusy: false,
       isMqttConnecting: false,
-      isMqttConnected: false,
-      clearDeviceCode: true,
+      isMqttConnected: true,
+      deviceCode: resolvedDeviceCode,
       clearError: true,
     );
-    _addLog('Tracking stopped.');
   }
 
-  void _refreshSnapshot() {
-    final snapshot = _gnssService.getCurrentSnapshot();
-    state = state.copyWith(snapshot: Map<String, dynamic>.from(snapshot));
-  }
-
-  Future<void> _publishTelemetry() async {
-    if (!state.isMqttConnected) {
-      return;
-    }
-
-    final tracking = state.snapshot['tracking'];
-    if (tracking is! Map || tracking['lat'] == null || tracking['lng'] == null) {
-      return;
+  Future<String?> _resolveAndroidDeviceCode() async {
+    if (!_isAndroid) {
+      return null;
     }
 
     try {
-      _mqttService.publishTelemetry(
-        state.snapshot,
-        deviceIdentifier: state.deviceCode,
-      );
-      _addLog('Publish OK to MQTT.');
-    } catch (error) {
-      state = state.copyWith(errorMessage: error.toString());
-      _addLog('Publish FAILED: $error');
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      return androidInfo.id.trim();
+    } catch (_) {
+      return null;
     }
   }
 
-  void _addLog(String message) {
-    final now = DateTime.now();
-    final stamp =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-    final nextLogs = <String>['[$stamp] $message', ...state.logs];
-    if (nextLogs.length > 150) {
-      nextLogs.removeRange(150, nextLogs.length);
-    }
-    state = state.copyWith(logs: nextLogs);
-  }
-
-  @override
-  void dispose() {
-    _refreshTimer?.cancel();
-    _publishTimer?.cancel();
-    _gnssService.stopCollection();
-    _mqttService.disconnect();
-    super.dispose();
-  }
+  bool get _isAndroid => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 }
-
-final trackingProvider =
-    StateNotifierProvider<TrackingNotifier, TrackingState>((ref) {
-  return TrackingNotifier(
-    ref.watch(gnssServiceProvider),
-    ref.watch(mqttServiceProvider),
-  );
-});

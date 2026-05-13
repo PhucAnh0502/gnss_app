@@ -3,6 +3,7 @@ import 'package:gnss_app/constants/app_colors.dart';
 import 'package:gnss_app/constants/app_environment.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:gnss_app/services/tracking_background_service.dart';
 import 'package:gnss_app/screens/change_password_screen.dart';
 import 'package:gnss_app/screens/dashboard_screen.dart';
 import 'package:gnss_app/screens/forgot_password_screen.dart';
@@ -16,6 +17,7 @@ import 'package:gnss_app/widgets/protected_route.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: AppEnvironment.envFileName);
+  await TrackingBackgroundService.initialize();
   runApp(const ProviderScope(child: MyApp()));
 }
 
@@ -27,7 +29,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'GNSS Tracker',
+      title: 'GNSS Vison',
       debugShowCheckedModeBanner: false,
       navigatorKey: appNavigatorKey,
       scaffoldMessengerKey: AppSnackBar.messengerKey,

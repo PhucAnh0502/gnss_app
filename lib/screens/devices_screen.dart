@@ -82,7 +82,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                       controller: _nameController,
                       decoration: const InputDecoration(
                         labelText: 'Device Name',
-                        hintText: 'GNSS Tracker A1',
+                        hintText: 'GNSS Vision A1',
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -527,7 +527,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
       allDevices.where((d) => _matchesStatusFilter(d, 'inactive')).length;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

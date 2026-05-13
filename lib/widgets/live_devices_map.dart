@@ -229,8 +229,8 @@ class _DeviceMarkers extends ConsumerWidget {
 
        final marker = Marker(
          point: point,
-         width: isSelected ? 40 : 32,
-         height: isSelected ? 40 : 32,
+         width: isSelected ? 30 : 20,
+         height: isSelected ? 30 : 20,
          child: GestureDetector(
            onTap: () => onDeviceSelected?.call(device),
            child: Container(
@@ -239,7 +239,7 @@ class _DeviceMarkers extends ConsumerWidget {
                color: markerColor.withValues(alpha: 0.95),
                border: Border.all(
                  color: Colors.white.withValues(alpha: 0.8),
-                 width: isSelected ? 2 : 1.5,
+                 width: isSelected ? 1.5 : 1,
                ),
                boxShadow: [
                  BoxShadow(

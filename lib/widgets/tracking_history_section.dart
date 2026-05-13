@@ -368,6 +368,80 @@ class _HistoryMapState extends State<_HistoryMap> {
     _mapController.move(lastPoint, 17);
   }
 
+  Marker _buildMarker(BuildContext ctx, LatLng point, Color color, String label) {
+    return Marker(
+      point: point,
+      width: 28,
+      height: 28,
+      child: GestureDetector(
+        onTap: () => _showMarkerInfo(ctx, point, color, label),
+        child: Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color.withValues(alpha: 0.95),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.85),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.4),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showMarkerInfo(BuildContext ctx, LatLng point, Color color, String label) {
+    showModalBottomSheet(
+      context: ctx,
+      backgroundColor: const Color(0xFF0D1932),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: color,
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.textLight,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
+              style: const TextStyle(
+                color: AppColors.slate400,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final validPoints = widget.points
@@ -403,24 +477,12 @@ class _HistoryMapState extends State<_HistoryMap> {
               if (validPoints.isNotEmpty)
                 MarkerLayer(
                   markers: [
-                    // Intermediate points (smaller)
-                    ...validPoints.asMap().entries.where((e) => e.key > 0 && e.key < validPoints.length - 1).map(
-                      (e) => _buildMarker(
-                        context,
-                        LatLng(e.value.latitude, e.value.longitude),
-                        AppColors.brandBlue,
-                        'Point ${e.key}',
-                        isSmall: true,
-                      ),
-                    ),
-                    // Start point (first)
                     _buildMarker(
                       context,
                       LatLng(validPoints.first.latitude, validPoints.first.longitude),
                       const Color(0xFF22C55E),
                       'Start',
                     ),
-                    // End point (last) - only if more than 1 point
                     if (validPoints.length > 1)
                       _buildMarker(
                         context,
@@ -527,80 +589,4 @@ class _HistoryMapState extends State<_HistoryMap> {
     );
   }
 
-  Marker _buildMarker(BuildContext ctx, LatLng point, Color color, String label, {bool isSmall = false}) {
-    final size = isSmall ? 28.0 : 40.0;
-    final borderWidth = isSmall ? 1.5 : 2.0;
-
-    return Marker(
-      point: point,
-      width: size,
-      height: size,
-      child: GestureDetector(
-        onTap: () => _showMarkerInfo(ctx, point, color, label),
-        child: Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color.withValues(alpha: 0.95),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.8),
-              width: borderWidth,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: color.withValues(alpha: 0.4),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showMarkerInfo(BuildContext ctx, LatLng point, Color color, String label) {
-    showModalBottomSheet(
-      context: ctx,
-      backgroundColor: const Color(0xFF0D1932),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: color,
-                    border: Border.all(color: Colors.white, width: 1.5),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: AppColors.textLight,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
-              style: const TextStyle(
-                color: AppColors.slate400,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

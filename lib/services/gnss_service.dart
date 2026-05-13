@@ -16,6 +16,10 @@ class GnssService {
   StreamSubscription? _statusSub;
   StreamSubscription? _measureSub;
 
+  Future<void> ensureLocationPermission() {
+    return _ensureLocationPermission();
+  }
+
   Future<void> startCollection() async {
     await _ensureLocationPermission();
     stopCollection();

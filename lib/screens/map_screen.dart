@@ -17,6 +17,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Widget build(BuildContext context) {
     final devicesAsync = ref.watch(realtimeDevicesProvider);
     final selectedDevice = ref.watch(selectedDeviceProvider);
+
+    // Handle loading state
+    if (devicesAsync.isLoading) {
+      return const _LoadingState();
+    }
+
+    // Handle error state
+    if (devicesAsync.hasError) {
+      return _ErrorState(error: devicesAsync.error.toString());
+    }
+
     final devices = devicesAsync.maybeWhen(
       data: (items) => items,
       orElse: () => const <DeviceModel>[],
@@ -32,7 +43,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
       child: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(realtimeDevicesProvider);
@@ -253,7 +264,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
@@ -289,6 +300,177 @@ class _EmptyState extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadingState extends StatefulWidget {
+  const _LoadingState();
+
+  @override
+  State<_LoadingState> createState() => _LoadingStateState();
+}
+
+class _LoadingStateState extends State<_LoadingState>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                // Outer rotating circle
+                RotationTransition(
+                  turns: _controller,
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppColors.brandBlue.withValues(alpha: 0.2),
+                        width: 3,
+                      ),
+                    ),
+                  ),
+                ),
+                // Inner rotating circle (opposite direction)
+                RotationTransition(
+                  turns: Tween<double>(begin: 1, end: 0).animate(_controller),
+                  child: Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppColors.brandBlue.withValues(alpha: 0.4),
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                ),
+                // Center dot
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.brandBlue,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            Text(
+              'Loading devices...',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.brandBlue,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Fetching your tracker locations',
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.slate400,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.error});
+
+  final String error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.red.withValues(alpha: 0.1),
+              ),
+              child: Icon(
+                Icons.error_outline,
+                color: Colors.red.shade400,
+                size: 40,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Failed to load devices',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textLight,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.red.withValues(alpha: 0.08),
+                border: Border.all(
+                  color: Colors.red.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Text(
+                error,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.red.shade300,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Please try again later',
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.slate400,
+              ),
+            ),
+          ],
         ),
       ),
     );
