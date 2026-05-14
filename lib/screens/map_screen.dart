@@ -84,12 +84,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               onCaptureSnapshot: () => _captureSnapshot(effectiveDevice.id),
             ),
             const SizedBox(height: 16),
-            _SnapshotSummaryCard(
-              snapshotCount: deviceSnapshots.length,
-              latestSnapshot: deviceSnapshots.isEmpty ? null : deviceSnapshots.first,
-              isLoading: snapshotState.isLoading,
-            ),
-            const SizedBox(height: 16),
             Container(
               height: 500,
               decoration: BoxDecoration(
@@ -242,87 +236,6 @@ class _MapHeader extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-class _SnapshotSummaryCard extends StatelessWidget {
-  const _SnapshotSummaryCard({
-    required this.snapshotCount,
-    required this.latestSnapshot,
-    required this.isLoading,
-  });
-
-  final int snapshotCount;
-  final SnapshotModel? latestSnapshot;
-  final bool isLoading;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        color: AppColors.bgSidebar.withValues(alpha: 0.72),
-        border: Border.all(color: AppColors.slate400.withValues(alpha: 0.16)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.photo_camera_outlined, color: AppColors.brandBlue, size: 20),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Snapshot summary',
-                  style: TextStyle(
-                    color: AppColors.textLight,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (isLoading)
-                const Text(
-                  'Refreshing...',
-                  style: TextStyle(color: AppColors.slate400, fontSize: 12),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _SnapshotMetric(label: 'Count', value: snapshotCount.toString()),
-              const SizedBox(width: 12),
-              _SnapshotMetric(label: 'Latest', value: latestSnapshot?.syncStatus ?? 'none'),
-              const SizedBox(width: 12),
-              _SnapshotMetric(label: 'Mode', value: latestSnapshot?.captureMode ?? '-'),
-            ],
-          ),
-          if (latestSnapshot != null) ...[
-            const SizedBox(height: 14),
-            Text(
-              'Last captured ${_formatDateTime(latestSnapshot!.capturedAt)}',
-              style: const TextStyle(color: AppColors.slate400, fontSize: 12),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${latestSnapshot!.latitude?.toStringAsFixed(6) ?? '-'}, ${latestSnapshot!.longitude?.toStringAsFixed(6) ?? '-'}',
-              style: const TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w600),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  String _formatDateTime(DateTime value) {
-    final local = value.toLocal();
-    final day = local.day.toString().padLeft(2, '0');
-    final month = local.month.toString().padLeft(2, '0');
-    final hour = local.hour.toString().padLeft(2, '0');
-    final minute = local.minute.toString().padLeft(2, '0');
-    return '$day/$month/${local.year} $hour:$minute';
   }
 }
 

@@ -6,6 +6,7 @@ import 'package:gnss_app/screens/devices_screen.dart';
 import 'package:gnss_app/screens/history_screen.dart';
 import 'package:gnss_app/screens/map_screen.dart';
 import 'package:gnss_app/screens/settings_screen.dart';
+import 'package:gnss_app/screens/snapshots_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -33,6 +34,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final pages = <Widget>[
       MapScreen(key: const PageStorageKey<String>('map')),
       DevicesScreen(key: const PageStorageKey<String>('devices')),
+      const SnapshotsScreen(key: PageStorageKey<String>('snapshots')),
       HistoryScreen(key: const PageStorageKey<String>('history')),
       SettingsScreen(key: const PageStorageKey<String>('settings')),
     ];
@@ -97,6 +99,7 @@ class _BottomNavBar extends StatelessWidget {
   static const _items = [
     _NavItem(icon: Icons.map_outlined, activeIcon: Icons.map, label: 'Map'),
     _NavItem(icon: Icons.devices_outlined, activeIcon: Icons.devices, label: 'Devices'),
+    _NavItem(icon: Icons.camera_alt_outlined, activeIcon: Icons.camera_alt, label: 'Snapshots'),
     _NavItem(icon: Icons.timeline_outlined, activeIcon: Icons.timeline, label: 'History'),
     _NavItem(icon: Icons.person_outline, activeIcon: Icons.person, label: 'Profile'),
   ];
@@ -106,29 +109,29 @@ class _BottomNavBar extends StatelessWidget {
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
 
     return Container(
-      margin: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding > 0 ? bottomPadding : 12),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      margin: EdgeInsets.fromLTRB(12, 0, 12, bottomPadding > 0 ? bottomPadding : 10),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F1629),
-        borderRadius: BorderRadius.circular(24),
+        color: const Color(0xFF0D1424),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: AppColors.slate700.withValues(alpha: 0.4),
+          color: AppColors.slate700.withValues(alpha: 0.35),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 28,
+            offset: const Offset(0, 10),
           ),
           BoxShadow(
-            color: AppColors.brandBlue.withValues(alpha: 0.05),
+            color: AppColors.brandBlue.withValues(alpha: 0.04),
             blurRadius: 40,
-            offset: const Offset(0, -4),
+            offset: const Offset(0, -2),
           ),
         ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: List.generate(_items.length, (index) {
           final item = _items[index];
           final isActive = index == selectedIndex;
@@ -163,14 +166,17 @@ class _NavBarItem extends StatelessWidget {
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
         padding: EdgeInsets.symmetric(
-          horizontal: isActive ? 16 : 12,
-          vertical: 10,
+          horizontal: isActive ? 14 : 10,
+          vertical: 8,
         ),
         decoration: BoxDecoration(
           color: isActive ? AppColors.brandBlue.withValues(alpha: 0.12) : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isActive ? AppColors.brandBlue.withValues(alpha: 0.2) : Colors.transparent,
+          ),
         ),
-        child: Row(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             AnimatedSwitcher(
@@ -179,21 +185,20 @@ class _NavBarItem extends StatelessWidget {
                 isActive ? item.activeIcon : item.icon,
                 key: ValueKey(isActive),
                 color: isActive ? AppColors.brandBlue : AppColors.slate500,
-                size: 22,
+                size: 21,
               ),
             ),
-            if (isActive) ...[
-              const SizedBox(width: 8),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 200),
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.brandBlue,
-                ),
-                child: Text(item.label),
+            const SizedBox(height: 4),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                color: isActive ? AppColors.brandBlueLight : AppColors.slate500,
+                letterSpacing: -0.1,
               ),
-            ],
+              child: Text(item.label),
+            ),
           ],
         ),
       ),
