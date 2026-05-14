@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gnss_app/constants/app_colors.dart';
 import 'package:gnss_app/models/device_model.dart';
+import 'package:gnss_app/models/snapshot_model.dart';
 import 'package:gnss_app/models/tracking_point_model.dart';
 import 'package:gnss_app/providers/device_provider.dart';
+import 'package:gnss_app/providers/snapshot_provider.dart';
 import 'package:gnss_app/providers/tracking_history_provider.dart';
 import 'package:gnss_app/widgets/tracking_history_section.dart';
 
@@ -18,11 +20,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   String? _selectedDeviceId;
   DateTime _startDate = DateTime.now().subtract(const Duration(days: 7));
   DateTime _endDate = DateTime.now();
+  String? _lastSnapshotLoadKey;
 
   @override
   Widget build(BuildContext context) {
     final devicesAsync = ref.watch(realtimeDevicesProvider);
     final selectedDevice = ref.watch(selectedDeviceProvider);
+    final snapshotState = ref.watch(snapshotProvider);
     final devices = devicesAsync.maybeWhen(
       data: (items) => items,
       orElse: () => const <DeviceModel>[],
@@ -42,6 +46,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final historyAsync = queryKey == null
         ? const AsyncValue<TrackingHistoryBundle>.loading()
         : ref.watch(trackingHistoryRangeProvider(queryKey));
+
+    if (queryKey != null && _lastSnapshotLoadKey != queryKey) {
+      _lastSnapshotLoadKey = queryKey;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && effectiveDeviceId != null) {
+          ref.read(snapshotProvider.notifier).loadSnapshots(
+                effectiveDeviceId,
+                from: _startDate.toUtc(),
+                to: _endDate.toUtc(),
+              );
+        }
+      });
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
@@ -98,6 +115,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             },
             selectedRangeLabel: _rangeLabel(_startDate, _endDate),
           ),
+          if (effectiveDeviceId != null) ...[
+            const SizedBox(height: 16),
+            _SnapshotHistoryBanner(
+              snapshotCount: snapshotState.items.where((item) => item.deviceId == effectiveDeviceId).length,
+              isLoading: snapshotState.isLoading,
+              lastSnapshot: snapshotState.items.where((item) => item.deviceId == effectiveDeviceId).isEmpty
+                  ? null
+                  : snapshotState.items.where((item) => item.deviceId == effectiveDeviceId).first,
+            ),
+          ],
           const SizedBox(height: 16),
           if (historyAsync.isLoading)
             const SizedBox(
@@ -286,6 +313,95 @@ class _HistoryFiltersCard extends StatelessWidget {
     if (picked != null) {
       onPicked(picked);
     }
+  }
+}
+
+class _SnapshotHistoryBanner extends StatelessWidget {
+  const _SnapshotHistoryBanner({
+    required this.snapshotCount,
+    required this.isLoading,
+    required this.lastSnapshot,
+  });
+
+  final int snapshotCount;
+  final bool isLoading;
+  final SnapshotModel? lastSnapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        color: AppColors.bgSidebar.withValues(alpha: 0.72),
+        border: Border.all(color: AppColors.slate400.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.photo_camera_outlined, color: AppColors.brandBlue, size: 20),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Snapshot activity',
+                  style: TextStyle(
+                    color: AppColors.textLight,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (isLoading)
+                const Text('Refreshing...', style: TextStyle(color: AppColors.slate400, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _SnapshotInfoTile(label: 'Loaded', value: snapshotCount.toString())),
+              const SizedBox(width: 12),
+              Expanded(child: _SnapshotInfoTile(label: 'Latest status', value: lastSnapshot?.syncStatus ?? 'none')),
+              const SizedBox(width: 12),
+              Expanded(child: _SnapshotInfoTile(label: 'Mode', value: lastSnapshot?.captureMode ?? '-')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SnapshotInfoTile extends StatelessWidget {
+  const _SnapshotInfoTile({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: const Color(0xFF0B1730),
+        border: Border.all(color: AppColors.slate400.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: AppColors.slate400, fontSize: 11)),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
   }
 }
 

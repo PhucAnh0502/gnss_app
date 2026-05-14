@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gnss_app/constants/app_colors.dart';
 import 'package:gnss_app/models/device_model.dart';
 import 'package:gnss_app/providers/tracking_history_provider.dart';
+import 'package:gnss_app/providers/snapshot_provider.dart';
+import 'package:gnss_app/widgets/snapshot_detail_modal.dart';
 import 'package:latlong2/latlong.dart';
 
 class LiveDevicesMap extends ConsumerStatefulWidget {
@@ -11,12 +13,10 @@ class LiveDevicesMap extends ConsumerStatefulWidget {
     super.key,
     required this.devices,
     required this.selectedDeviceId,
-    required this.onDeviceSelected,
   });
 
   final List<DeviceModel> devices;
   final String selectedDeviceId;
-  final ValueChanged<DeviceModel>? onDeviceSelected;
 
   @override
   ConsumerState<LiveDevicesMap> createState() => _LiveDevicesMapState();
@@ -92,7 +92,10 @@ class _LiveDevicesMapState extends ConsumerState<LiveDevicesMap> {
               _DeviceMarkers(
                 devices: widget.devices,
                 selectedDeviceId: widget.selectedDeviceId,
-                onDeviceSelected: widget.onDeviceSelected,
+              ),
+              // Snapshot markers
+              _SnapshotMarkers(
+                deviceId: widget.selectedDeviceId,
               ),
             ],
           ),
@@ -132,6 +135,53 @@ class _LiveDevicesMapState extends ConsumerState<LiveDevicesMap> {
         ],
       ),
     );
+  }
+}
+
+class _SnapshotMarkers extends ConsumerWidget {
+  const _SnapshotMarkers({required this.deviceId});
+
+  final String deviceId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(snapshotProvider);
+    final snapshots = state.items.where((item) => item.deviceId == deviceId && item.latitude != null && item.longitude != null).toList();
+
+    if (snapshots.isEmpty) return const SizedBox.shrink();
+
+    final markers = snapshots.map((snapshot) {
+      return Marker(
+        point: LatLng(snapshot.latitude!, snapshot.longitude!),
+        width: 42,
+        height: 42,
+        child: GestureDetector(
+          onTap: () => showModalBottomSheet<void>(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => SnapshotDetailModal(snapshot: snapshot),
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.brandBlue,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.brandBlue.withValues(alpha: 0.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.photo_camera, color: Colors.white, size: 18),
+          ),
+        ),
+      );
+    }).toList();
+
+    return MarkerLayer(markers: markers);
   }
 }
 
@@ -181,12 +231,10 @@ class _DeviceMarkers extends ConsumerWidget {
   const _DeviceMarkers({
     required this.devices,
     required this.selectedDeviceId,
-    required this.onDeviceSelected,
   });
 
   final List<DeviceModel> devices;
   final String selectedDeviceId;
-  final ValueChanged<DeviceModel>? onDeviceSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -231,24 +279,21 @@ class _DeviceMarkers extends ConsumerWidget {
          point: point,
          width: isSelected ? 30 : 20,
          height: isSelected ? 30 : 20,
-         child: GestureDetector(
-           onTap: () => onDeviceSelected?.call(device),
-           child: Container(
-             decoration: BoxDecoration(
-               shape: BoxShape.circle,
-               color: markerColor.withValues(alpha: 0.95),
-               border: Border.all(
-                 color: Colors.white.withValues(alpha: 0.8),
-                 width: isSelected ? 1.5 : 1,
-               ),
-               boxShadow: [
-                 BoxShadow(
-                   color: markerColor.withValues(alpha: 0.4),
-                   blurRadius: 12,
-                   offset: const Offset(0, 4),
-                 ),
-               ],
+         child: Container(
+           decoration: BoxDecoration(
+             shape: BoxShape.circle,
+             color: markerColor.withValues(alpha: 0.95),
+             border: Border.all(
+               color: Colors.white.withValues(alpha: 0.8),
+               width: isSelected ? 1.5 : 1,
              ),
+             boxShadow: [
+               BoxShadow(
+                 color: markerColor.withValues(alpha: 0.4),
+                 blurRadius: 12,
+                 offset: const Offset(0, 4),
+               ),
+             ],
            ),
          ),
        );

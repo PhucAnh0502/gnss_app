@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/device_model.dart';
 import '../services/device_service.dart';
 import '../services/socket_service.dart';
@@ -143,3 +146,58 @@ class DeviceActionNotifier extends StateNotifier<AsyncValue<void>> {
 final deviceActionProvider = StateNotifierProvider<DeviceActionNotifier, AsyncValue<void>>(
   (ref) => DeviceActionNotifier(ref.watch(deviceServiceProvider), ref),
 );
+
+// Get current device code stored in SharedPreferences or resolve from Android device ID
+final currentDeviceCodeProvider = FutureProvider<String?>((ref) async {
+  try {
+    // First try to get from SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    final storedCode = prefs.getString('tracking_device_code')?.trim();
+    if (storedCode != null && storedCode.isNotEmpty) {
+      return storedCode;
+    }
+
+    // If not stored, resolve Android device ID
+    if (!kIsWeb) {
+      try {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        return androidInfo.id.trim();
+      } catch (e) {
+        print('[Device Code Provider] Error getting Android device ID: $e');
+      }
+    }
+    
+    return null;
+  } catch (e) {
+    print('[Device Code Provider] Error: $e');
+    return null;
+  }
+});
+
+// Get current device from the list based on device code
+final currentPhysicalDeviceProvider = FutureProvider<DeviceModel?>((ref) async {
+  final currentDeviceCode = await ref.watch(currentDeviceCodeProvider.future);
+  final devicesAsync = ref.watch(realtimeDevicesProvider);
+  
+  return devicesAsync.maybeWhen(
+    data: (devices) {
+      if (currentDeviceCode == null || currentDeviceCode.isEmpty || devices.isEmpty) {
+        return null;
+      }
+      
+      // Find device that matches current device code
+      try {
+        final device = devices.firstWhere(
+          (d) => d.deviceCode.toLowerCase() == currentDeviceCode.toLowerCase(),
+          orElse: () => devices.first,
+        );
+        return device;
+      } catch (e) {
+        print('[Current Device Provider] Error finding matching device: $e');
+        return devices.isNotEmpty ? devices.first : null;
+      }
+    },
+    orElse: () => null,
+  );
+});

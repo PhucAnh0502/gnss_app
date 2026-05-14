@@ -37,35 +37,168 @@ class MyApp extends StatelessWidget {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: AppColors.primaryDark,
         primaryColor: AppColors.brandBlue,
+        useMaterial3: true,
+        fontFamily: 'Inter',
+        // ===== COLOR SCHEME =====
+        colorScheme: const ColorScheme.dark(
+          primary: AppColors.brandBlue,
+          secondary: AppColors.purple,
+          error: AppColors.error,
+          surface: AppColors.bgCard,
+          onSurface: AppColors.textLight,
+        ),
+        // ===== INPUT DECORATION =====
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: AppColors.bgInput,
+          contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+          labelStyle: const TextStyle(color: AppColors.slate400, fontSize: 14),
+          hintStyle: const TextStyle(color: AppColors.slate500, fontSize: 14),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide(
-              color: AppColors.slate400.withValues(alpha: 0.25),
+              color: AppColors.slate700.withValues(alpha: 0.5),
+              width: 1,
             ),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide(
-              color: AppColors.slate400.withValues(alpha: 0.25),
+              color: AppColors.slate700.withValues(alpha: 0.5),
+              width: 1,
             ),
           ),
-          focusedBorder: const OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(12)),
-            borderSide: BorderSide(color: AppColors.brandBlue),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(
+              color: AppColors.brandBlue,
+              width: 1.5,
+            ),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(
+              color: AppColors.error,
+              width: 1,
+            ),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(
+              color: AppColors.error,
+              width: 1.5,
+            ),
           ),
         ),
+        // ===== FILLED BUTTON THEME =====
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.brandBlue,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            foregroundColor: AppColors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            elevation: 0,
+            textStyle: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
             ),
           ),
+        ),
+        // ===== TEXT BUTTON THEME =====
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.brandBlue,
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        // ===== OUTLINED BUTTON THEME =====
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.brandBlue,
+            side: const BorderSide(
+              color: AppColors.brandBlue,
+              width: 1.5,
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        ),
+        // ===== CARD THEME =====
+        cardTheme: CardThemeData(
+          color: AppColors.bgCard,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(
+              color: AppColors.slate700.withValues(alpha: 0.3),
+              width: 1,
+            ),
+          ),
+          margin: EdgeInsets.zero,
+        ),
+        // ===== DIALOG THEME =====
+        dialogTheme: DialogThemeData(
+          backgroundColor: const Color(0xFF16243A),
+          elevation: 24,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(
+              color: AppColors.slate700.withValues(alpha: 0.3),
+              width: 1,
+            ),
+          ),
+        ),
+        // ===== SNACK BAR THEME =====
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: AppColors.bgElevated,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 8,
+          behavior: SnackBarBehavior.floating,
+        ),
+        // ===== APP BAR THEME =====
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: true,
+          titleTextStyle: TextStyle(
+            color: AppColors.textLight,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        // ===== DIVIDER THEME =====
+        dividerTheme: DividerThemeData(
+          color: AppColors.slate700.withValues(alpha: 0.4),
+          thickness: 1,
+          space: 16,
+        ),
+        // ===== SWITCH THEME =====
+        switchTheme: SwitchThemeData(
+          thumbColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return AppColors.white;
+            }
+            return AppColors.slate400;
+          }),
+          trackColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return AppColors.brandBlue;
+            }
+            return AppColors.slate700;
+          }),
         ),
       ),
       initialRoute: LoginScreen.routeName,

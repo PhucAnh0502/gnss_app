@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:gnss_app/constants/app_colors.dart';
 import 'package:gnss_app/models/device_model.dart';
+import 'package:gnss_app/providers/snapshot_provider.dart';
 import 'package:gnss_app/models/tracking_point_model.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
-class TrackingHistorySection extends StatelessWidget {
+class TrackingHistorySection extends ConsumerWidget {
   const TrackingHistorySection({
     super.key,
     required this.device,
@@ -22,8 +24,12 @@ class TrackingHistorySection extends StatelessWidget {
   final bool showRangeChips;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final hasPoints = bundle.hasPoints;
+    final snapshotState = device == null ? null : ref.watch(snapshotProvider);
+    final snapshots = device == null
+        ? const []
+        : snapshotState!.items.where((item) => item.deviceId == device!.id).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -118,6 +124,48 @@ class TrackingHistorySection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
+        if (snapshots.isNotEmpty) ...[
+          Text(
+            'Snapshots',
+            style: const TextStyle(
+              color: AppColors.textLight,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 92,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemBuilder: (context, index) {
+                final snapshot = snapshots[index];
+                return Container(
+                  width: 160,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.bgSidebar.withValues(alpha: 0.88),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.slate400.withValues(alpha: 0.14)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(snapshot.captureMode, style: const TextStyle(color: AppColors.slate400, fontSize: 11)),
+                      const SizedBox(height: 6),
+                      Text(snapshot.capturedAt.toLocal().toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.textLight, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      Text(snapshot.syncStatus, style: const TextStyle(color: AppColors.brandBlue, fontSize: 11)),
+                    ],
+                  ),
+                );
+              },
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemCount: snapshots.length,
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         if (!hasPoints)
           Container(
             width: double.infinity,
@@ -349,7 +397,7 @@ class _HistoryMapState extends State<_HistoryMap> {
     if (points.isEmpty) return;
 
     final bounds = LatLngBounds.fromPoints(points);
-    await _mapController.fitCamera(
+    _mapController.fitCamera(
       CameraFit.bounds(
         bounds: bounds,
         padding: const EdgeInsets.all(28),

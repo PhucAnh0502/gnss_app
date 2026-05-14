@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gnss_app/constants/app_colors.dart';
 import 'package:gnss_app/screens/devices_screen.dart';
@@ -19,154 +20,195 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _selectedTabIndex = 0;
 
   void _selectTab(int index) {
-    setState(() {
-      _selectedTabIndex = index;
-    });
+    if (index != _selectedTabIndex) {
+      HapticFeedback.lightImpact();
+      setState(() {
+        _selectedTabIndex = index;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    const pages = <Widget>[
-      MapScreen(),
-      DevicesScreen(),
-      HistoryScreen(),
-      SettingsScreen(),
+    final pages = <Widget>[
+      MapScreen(key: const PageStorageKey<String>('map')),
+      DevicesScreen(key: const PageStorageKey<String>('devices')),
+      HistoryScreen(key: const PageStorageKey<String>('history')),
+      SettingsScreen(key: const PageStorageKey<String>('settings')),
     ];
 
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppColors.primaryDark, AppColors.bgMainGradientEnd],
-          ),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 320),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) {
-              final offsetAnimation = Tween<Offset>(
-                begin: const Offset(0.02, 0),
-                end: Offset.zero,
-              ).animate(animation);
-
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(position: offsetAnimation, child: child),
-              );
-            },
-            child: KeyedSubtree(
-              key: ValueKey<int>(_selectedTabIndex),
-              child: pages[_selectedTabIndex],
-            ),
-          ),
-        ),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-          child: Container(
-            height: 82,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF2F4F8),
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.24),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _BottomMenuItem(
-                    label: 'Map',
-                    icon: Icons.map,
-                    active: _selectedTabIndex == 0,
-                    onTap: () => _selectTab(0),
-                  ),
-                ),
-                Expanded(
-                  child: _BottomMenuItem(
-                    label: 'Devices',
-                    icon: Icons.devices,
-                    active: _selectedTabIndex == 1,
-                    onTap: () => _selectTab(1),
-                  ),
-                ),
-                Expanded(
-                  child: _BottomMenuItem(
-                    label: 'History',
-                    icon: Icons.bar_chart,
-                    active: _selectedTabIndex == 2,
-                    onTap: () => _selectTab(2),
-                  ),
-                ),
-                Expanded(
-                  child: _BottomMenuItem(
-                    label: 'Settings',
-                    icon: Icons.person,
-                    active: _selectedTabIndex == 3,
-                    onTap: () => _selectTab(3),
-                  ),
-                ),
-              ],
+      child: Scaffold(
+        extendBody: true,
+        body: Container(
+          width: double.infinity,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [AppColors.primaryDark, AppColors.bgMainGradientEnd],
+              stops: [0.0, 0.85],
             ),
           ),
+          child: SafeArea(
+            bottom: false,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                return FadeTransition(
+                  opacity: CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOut,
+                  ),
+                  child: child,
+                );
+              },
+              child: KeyedSubtree(
+                key: ValueKey<int>(_selectedTabIndex),
+                child: pages[_selectedTabIndex],
+              ),
+            ),
+          ),
+        ),
+        bottomNavigationBar: _BottomNavBar(
+          selectedIndex: _selectedTabIndex,
+          onTap: _selectTab,
         ),
       ),
     );
   }
-
 }
 
-class _BottomMenuItem extends StatelessWidget {
-  const _BottomMenuItem({
-    required this.label,
-    required this.icon,
-    required this.active,
+class _BottomNavBar extends StatelessWidget {
+  const _BottomNavBar({
+    required this.selectedIndex,
     required this.onTap,
   });
 
-  final String label;
-  final IconData icon;
-  final bool active;
+  final int selectedIndex;
+  final ValueChanged<int> onTap;
+
+  static const _items = [
+    _NavItem(icon: Icons.map_outlined, activeIcon: Icons.map, label: 'Map'),
+    _NavItem(icon: Icons.devices_outlined, activeIcon: Icons.devices, label: 'Devices'),
+    _NavItem(icon: Icons.timeline_outlined, activeIcon: Icons.timeline, label: 'History'),
+    _NavItem(icon: Icons.person_outline, activeIcon: Icons.person, label: 'Profile'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+
+    return Container(
+      margin: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding > 0 ? bottomPadding : 12),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F1629),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: AppColors.slate700.withValues(alpha: 0.4),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: AppColors.brandBlue.withValues(alpha: 0.05),
+            blurRadius: 40,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: List.generate(_items.length, (index) {
+          final item = _items[index];
+          final isActive = index == selectedIndex;
+          return _NavBarItem(
+            item: item,
+            isActive: isActive,
+            onTap: () => onTap(index),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+class _NavBarItem extends StatelessWidget {
+  const _NavBarItem({
+    required this.item,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  final _NavItem item;
+  final bool isActive;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final activeColor = AppColors.brandBlue;
-    final inactiveColor = const Color(0xFF98A2B3);
-
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: active ? activeColor : inactiveColor, size: 24),
-          const SizedBox(height: 5),
-          AnimatedDefaultTextStyle(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: active ? activeColor : inactiveColor,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: EdgeInsets.symmetric(
+          horizontal: isActive ? 16 : 12,
+          vertical: 10,
+        ),
+        decoration: BoxDecoration(
+          color: isActive ? AppColors.brandBlue.withValues(alpha: 0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: Icon(
+                isActive ? item.activeIcon : item.icon,
+                key: ValueKey(isActive),
+                color: isActive ? AppColors.brandBlue : AppColors.slate500,
+                size: 22,
+              ),
             ),
-            child: Text(label),
-          ),
-        ],
+            if (isActive) ...[
+              const SizedBox(width: 8),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.brandBlue,
+                ),
+                child: Text(item.label),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
+}
+
+class _NavItem {
+  const _NavItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
 }

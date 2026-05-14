@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gnss_app/constants/app_colors.dart';
 import 'package:gnss_app/models/device_model.dart';
+import 'package:gnss_app/models/snapshot_model.dart';
 import 'package:gnss_app/providers/device_provider.dart';
+import 'package:gnss_app/providers/snapshot_provider.dart';
+import 'package:gnss_app/providers/tracking_history_provider.dart';
 import 'package:gnss_app/widgets/live_devices_map.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
@@ -13,10 +18,13 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen> {
+  String? _loadedSnapshotDeviceId;
+
   @override
   Widget build(BuildContext context) {
     final devicesAsync = ref.watch(realtimeDevicesProvider);
-    final selectedDevice = ref.watch(selectedDeviceProvider);
+    final currentDevice = ref.watch(currentPhysicalDeviceProvider);
+    final snapshotState = ref.watch(snapshotProvider);
 
     // Handle loading state
     if (devicesAsync.isLoading) {
@@ -32,7 +40,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       data: (items) => items,
       orElse: () => const <DeviceModel>[],
     );
-    final effectiveDevice = selectedDevice ?? (devices.isNotEmpty ? devices.first : null);
+    
+    // Get current physical device or fallback to first device
+    final effectiveDevice = currentDevice.maybeWhen(
+      data: (device) => device ?? (devices.isNotEmpty ? devices.first : null),
+      orElse: () => devices.isNotEmpty ? devices.first : null,
+    );
+    final deviceSnapshots = effectiveDevice == null
+        ? const []
+        : snapshotState.items.where((item) => item.deviceId == effectiveDevice.id).toList();
+
+    if (effectiveDevice != null && _loadedSnapshotDeviceId != effectiveDevice.id) {
+      _loadedSnapshotDeviceId = effectiveDevice.id;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(snapshotProvider.notifier).loadSnapshots(effectiveDevice.id);
+        }
+      });
+    }
 
     if (effectiveDevice == null) {
       return const _EmptyState(
@@ -56,13 +81,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               deviceName: effectiveDevice.deviceName,
               deviceCode: effectiveDevice.deviceCode,
               status: effectiveDevice.status,
-              onDeviceSelected: devices.isEmpty
-                  ? null
-                  : (device) {
-                      ref.read(selectedDeviceProvider.notifier).state = device;
-                    },
-              devices: devices,
-              selectedDeviceId: effectiveDevice.id,
+              onCaptureSnapshot: () => _captureSnapshot(effectiveDevice.id),
+            ),
+            const SizedBox(height: 16),
+            _SnapshotSummaryCard(
+              snapshotCount: deviceSnapshots.length,
+              latestSnapshot: deviceSnapshots.isEmpty ? null : deviceSnapshots.first,
+              isLoading: snapshotState.isLoading,
             ),
             const SizedBox(height: 16),
             Container(
@@ -74,13 +99,59 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               child: LiveDevicesMap(
                 devices: devices,
                 selectedDeviceId: effectiveDevice.id,
-                onDeviceSelected: (device) {
-                  ref.read(selectedDeviceProvider.notifier).state = device;
-                },
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _captureSnapshot(String deviceId) async {
+    final cameraPermission = await Permission.camera.request();
+    if (!cameraPermission.isGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Camera permission is required to capture a snapshot.')),
+        );
+      }
+      return;
+    }
+
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+    if (image == null) {
+      return;
+    }
+
+    final latestPoint = await ref.read(latestTrackingProvider(deviceId).future);
+    final metadata = <String, dynamic>{
+      'deviceId': deviceId,
+      'capturedAt': DateTime.now().toUtc().toIso8601String(),
+      'captureMode': 'manual',
+      'latitude': latestPoint?.latitude,
+      'longitude': latestPoint?.longitude,
+      'altitude': latestPoint?.altitude,
+      'speed': latestPoint?.speed,
+      'heading': latestPoint?.heading,
+      'hdop': latestPoint?.hdop,
+      'satellitesCount': latestPoint?.satellitesCount,
+      'satellitesUsed': latestPoint?.satellitesUsed,
+      'avgCn0': latestPoint?.avgCn0,
+      'trackingId': latestPoint?.id,
+      'mimeType': 'image/jpeg',
+    };
+
+    final uploaded = await ref.read(snapshotProvider.notifier).createAndUpload(
+          metadata: metadata,
+          filePath: image.path,
+        );
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(uploaded == null ? 'Snapshot upload failed.' : 'Snapshot saved and uploaded.'),
       ),
     );
   }
@@ -91,17 +162,13 @@ class _MapHeader extends StatelessWidget {
     required this.deviceName,
     required this.deviceCode,
     required this.status,
-    required this.devices,
-    required this.selectedDeviceId,
-    required this.onDeviceSelected,
+    required this.onCaptureSnapshot,
   });
 
   final String deviceName;
   final String deviceCode;
   final String status;
-  final List<DeviceModel> devices;
-  final String selectedDeviceId;
-  final ValueChanged<DeviceModel>? onDeviceSelected;
+  final VoidCallback onCaptureSnapshot;
 
   @override
   Widget build(BuildContext context) {
@@ -164,13 +231,130 @@ class _MapHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          if (devices.isNotEmpty)
-            _DeviceSwitcher(
-              devices: devices,
-              selectedDeviceId: selectedDeviceId,
-              onChanged: onDeviceSelected,
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onCaptureSnapshot,
+              icon: const Icon(Icons.photo_camera_outlined),
+              label: const Text('Capture snapshot'),
             ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _SnapshotSummaryCard extends StatelessWidget {
+  const _SnapshotSummaryCard({
+    required this.snapshotCount,
+    required this.latestSnapshot,
+    required this.isLoading,
+  });
+
+  final int snapshotCount;
+  final SnapshotModel? latestSnapshot;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        color: AppColors.bgSidebar.withValues(alpha: 0.72),
+        border: Border.all(color: AppColors.slate400.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.photo_camera_outlined, color: AppColors.brandBlue, size: 20),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Snapshot summary',
+                  style: TextStyle(
+                    color: AppColors.textLight,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (isLoading)
+                const Text(
+                  'Refreshing...',
+                  style: TextStyle(color: AppColors.slate400, fontSize: 12),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _SnapshotMetric(label: 'Count', value: snapshotCount.toString()),
+              const SizedBox(width: 12),
+              _SnapshotMetric(label: 'Latest', value: latestSnapshot?.syncStatus ?? 'none'),
+              const SizedBox(width: 12),
+              _SnapshotMetric(label: 'Mode', value: latestSnapshot?.captureMode ?? '-'),
+            ],
+          ),
+          if (latestSnapshot != null) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Last captured ${_formatDateTime(latestSnapshot!.capturedAt)}',
+              style: const TextStyle(color: AppColors.slate400, fontSize: 12),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${latestSnapshot!.latitude?.toStringAsFixed(6) ?? '-'}, ${latestSnapshot!.longitude?.toStringAsFixed(6) ?? '-'}',
+              style: const TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _formatDateTime(DateTime value) {
+    final local = value.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$day/$month/${local.year} $hour:$minute';
+  }
+}
+
+class _SnapshotMetric extends StatelessWidget {
+  const _SnapshotMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          color: const Color(0xFF0B1730),
+          border: Border.all(color: AppColors.slate400.withValues(alpha: 0.12)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(color: AppColors.slate400, fontSize: 11)),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -201,55 +385,6 @@ class _StatusBadge extends StatelessWidget {
         normalized.isEmpty ? 'Unknown' : normalized[0].toUpperCase() + normalized.substring(1),
         style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12),
       ),
-    );
-  }
-}
-
-class _DeviceSwitcher extends StatelessWidget {
-  const _DeviceSwitcher({
-    required this.devices,
-    required this.selectedDeviceId,
-    required this.onChanged,
-  });
-
-  final List<DeviceModel> devices;
-  final String selectedDeviceId;
-  final ValueChanged<DeviceModel>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      value: selectedDeviceId,
-      decoration: InputDecoration(
-        labelText: 'Device',
-        labelStyle: const TextStyle(color: AppColors.slate400),
-        filled: true,
-        fillColor: const Color(0xFF0B1730),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: AppColors.slate400.withValues(alpha: 0.14)),
-        ),
-      ),
-      dropdownColor: const Color(0xFF0B1730),
-      style: const TextStyle(color: AppColors.textLight),
-      iconEnabledColor: AppColors.slate400,
-      items: devices
-          .map(
-            (device) => DropdownMenuItem<String>(
-              value: device.id,
-              child: Text(device.deviceName),
-            ),
-          )
-          .toList(),
-      onChanged: onChanged == null
-          ? null
-          : (value) {
-              final device = devices.firstWhere(
-                (item) => item.id == value,
-                orElse: () => devices.first,
-              );
-              onChanged?.call(device);
-            },
     );
   }
 }
