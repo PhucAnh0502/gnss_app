@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/auto_capture_foreground_service.dart';
 import '../services/gnss_service.dart';
 import '../services/tracking_background_service.dart';
 
@@ -76,7 +77,10 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
 
       if (isEnabled) {
         await _startBackgroundTracking(deviceCode: resolvedDeviceCode);
+        // Start auto-capture in foreground
+        _startAutoCapture();
       } else {
+        AutoCaptureForegroundService.instance.stop();
         await TrackingBackgroundService.stop();
       }
     } catch (e) {
@@ -94,15 +98,24 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
           throw Exception('Notification permission is required to keep tracking running in background.');
         }
 
+        // Request camera permission for auto-capture
+        final cameraPermission = await Permission.camera.request();
+        if (!cameraPermission.isGranted) {
+          print('[Tracking] Camera permission denied — auto-capture will not work');
+        }
+
         final deviceCode = await _resolveAndroidDeviceCode();
         if (deviceCode == null || deviceCode.isEmpty) {
           throw Exception('Không thể lấy device code của thiết bị Android này.');
         }
 
         await _startBackgroundTracking(deviceCode: deviceCode);
+        // Start auto-capture in foreground (camera needs main isolate)
+        _startAutoCapture();
         return true;
       }
 
+      AutoCaptureForegroundService.instance.stop();
       await TrackingBackgroundService.stop();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_trackingEnabledKey, false);
@@ -176,4 +189,15 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
   }
 
   bool get _isAndroid => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  void _startAutoCapture() {
+    // GnssService needs to be running for auto-capture to read position
+    final gnssService = GnssService();
+    // Start collection (may already be running in background, but safe to call)
+    gnssService.startCollection().then((_) {
+      AutoCaptureForegroundService.instance.start(gnssService);
+    }).catchError((e) {
+      print('[Tracking] Cannot start auto-capture GNSS: $e');
+    });
+  }
 }

@@ -6,6 +6,7 @@ import 'package:gnss_app/providers/tracking_provider.dart';
 import 'package:gnss_app/screens/change_password_screen.dart';
 import 'package:gnss_app/screens/login_screen.dart';
 import 'package:gnss_app/utils/app_snackbar.dart';
+import 'package:gnss_app/widgets/auto_capture_settings.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -41,6 +42,10 @@ class SettingsScreen extends ConsumerWidget {
             }
           },
         ),
+        const SizedBox(height: 16),
+
+        // ===== AUTO CAPTURE =====
+        const AutoCaptureSettings(),
         const SizedBox(height: 16),
 
         // ===== SETTINGS SECTION =====
