@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gnss_app/constants/app_colors.dart';
 import 'package:gnss_app/models/device_model.dart';
+import 'package:gnss_app/providers/live_position_provider.dart';
 import 'package:gnss_app/providers/tracking_history_provider.dart';
 import 'package:gnss_app/providers/snapshot_provider.dart';
 import 'package:gnss_app/widgets/snapshot_detail_modal.dart';
@@ -37,31 +38,32 @@ class _LiveDevicesMapState extends ConsumerState<LiveDevicesMap> {
     super.dispose();
   }
 
-  Future<LatLng?> _getDeviceLocation(String deviceId) async {
-    try {
-      final historyKey = '$deviceId|1';
-      final history = await ref.read(trackingHistoryProvider(historyKey).future);
-      if (history.points.isNotEmpty) {
-        final lastPoint = history.points.last;
-        if (lastPoint.latitude.isFinite && lastPoint.longitude.isFinite) {
-          return LatLng(lastPoint.latitude, lastPoint.longitude);
-        }
-      }
-    } catch (e) {
-      debugPrint('Error getting device location: $e');
-    }
-    return null;
-  }
-
   Future<void> _centerOnSelectedDevice() async {
     final selectedDevice = widget.devices.firstWhereOrNull(
       (d) => d.id == widget.selectedDeviceId,
     );
-    if (selectedDevice != null) {
-      final location = await _getDeviceLocation(selectedDevice.id);
-      if (location != null && mounted) {
-        _mapController.move(location, 15);
+    if (selectedDevice == null) return;
+
+    // First try live position
+    final livePositions = ref.read(livePositionProvider);
+    final livePos = livePositions[selectedDevice.deviceCode];
+    if (livePos != null) {
+      _mapController.move(livePos.position, 15);
+      return;
+    }
+
+    // Fallback to history
+    try {
+      final historyKey = '${selectedDevice.id}|1';
+      final history = await ref.read(trackingHistoryProvider(historyKey).future);
+      if (history.points.isNotEmpty) {
+        final lastPoint = history.points.last;
+        if (lastPoint.latitude.isFinite && lastPoint.longitude.isFinite && mounted) {
+          _mapController.move(LatLng(lastPoint.latitude, lastPoint.longitude), 15);
+        }
       }
+    } catch (e) {
+      debugPrint('Error getting device location: $e');
     }
   }
 
@@ -84,11 +86,14 @@ class _LiveDevicesMapState extends ConsumerState<LiveDevicesMap> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'gnss_app',
               ),
-              // Polyline for selected device
+              // Polyline for selected device (history + live trail)
               _SelectedDevicePolyline(
                 deviceId: widget.selectedDeviceId,
+                deviceCode: widget.devices
+                    .firstWhereOrNull((d) => d.id == widget.selectedDeviceId)
+                    ?.deviceCode ?? '',
               ),
-              // Device markers
+              // Device markers (with live position overlay)
               _DeviceMarkers(
                 devices: widget.devices,
                 selectedDeviceId: widget.selectedDeviceId,
@@ -188,37 +193,48 @@ class _SnapshotMarkers extends ConsumerWidget {
 class _SelectedDevicePolyline extends ConsumerWidget {
   const _SelectedDevicePolyline({
     required this.deviceId,
+    required this.deviceCode,
   });
 
   final String deviceId;
+  final String deviceCode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Get history points
     final historyKey = '$deviceId|1';
     final historyAsync = ref.watch(trackingHistoryProvider(historyKey));
 
-    if (historyAsync is! AsyncData) {
-      return const SizedBox.shrink();
+    // Get live trail points
+    final liveTrails = ref.watch(liveTrailProvider);
+    final liveTrail = liveTrails[deviceCode] ?? [];
+
+    // Build combined points list
+    final List<LatLng> allPoints = [];
+
+    // Add history points
+    if (historyAsync is AsyncData) {
+      final bundle = historyAsync.value;
+      if (bundle != null) {
+        final validHistoryPoints = bundle.points
+            .where((p) => p.latitude.isFinite && p.longitude.isFinite)
+            .map((p) => LatLng(p.latitude, p.longitude))
+            .toList();
+        allPoints.addAll(validHistoryPoints);
+      }
     }
 
-    final bundle = historyAsync.value;
-    if (bundle == null) {
-      return const SizedBox.shrink();
-    }
-    final validPoints = bundle.points
-        .where((p) => p.latitude.isFinite && p.longitude.isFinite)
-        .toList();
+    // Append live trail points
+    allPoints.addAll(liveTrail);
 
-    if (validPoints.length < 2) {
+    if (allPoints.length < 2) {
       return const SizedBox.shrink();
     }
 
     return PolylineLayer(
       polylines: [
         Polyline(
-          points: validPoints
-              .map((p) => LatLng(p.latitude, p.longitude))
-              .toList(),
+          points: allPoints,
           strokeWidth: 3,
           color: AppColors.brandBlue.withValues(alpha: 0.8),
         ),
@@ -238,70 +254,94 @@ class _DeviceMarkers extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-     final markers = <Marker>[];
+    // Watch live positions from Socket.IO
+    final livePositions = ref.watch(livePositionProvider);
+    final markers = <Marker>[];
 
-     for (final device in devices) {
-       final historyKey = '${device.id}|1';
-       final historyAsync = ref.watch(trackingHistoryProvider(historyKey));
+    for (final device in devices) {
+      LatLng? point;
 
-       // Only process if data is available
-       if (historyAsync is! AsyncData) {
-         continue;
-       }
+      // Priority 1: Use live position from Socket.IO if available
+      final livePos = livePositions[device.deviceCode];
+      if (livePos != null) {
+        point = livePos.position;
+      }
 
-       final bundle = historyAsync.value;
-       if (bundle == null) {
-         continue;
-       }
-       if (bundle.points.isEmpty) {
-         continue;
-       }
+      // Priority 2: Fallback to history data
+      if (point == null) {
+        final historyKey = '${device.id}|1';
+        final historyAsync = ref.watch(trackingHistoryProvider(historyKey));
 
-       final lastPoint = bundle.points.last;
-       if (!lastPoint.latitude.isFinite || !lastPoint.longitude.isFinite) {
-         continue;
-       }
+        if (historyAsync is AsyncData) {
+          final bundle = historyAsync.value;
+          if (bundle != null && bundle.points.isNotEmpty) {
+            final lastPoint = bundle.points.last;
+            if (lastPoint.latitude.isFinite && lastPoint.longitude.isFinite) {
+              point = LatLng(lastPoint.latitude, lastPoint.longitude);
+            }
+          }
+        }
+      }
 
-       final isSelected = device.id == selectedDeviceId;
-       final point = LatLng(lastPoint.latitude, lastPoint.longitude);
-       final isActive = device.status.toLowerCase() == 'active';
+      // Skip if no position available
+      if (point == null) continue;
 
-       Color markerColor;
-       if (isSelected) {
-         markerColor = AppColors.brandBlue;
-       } else if (isActive) {
-         markerColor = const Color(0xFF38BDF8);
-       } else {
-         markerColor = AppColors.slate400;
-       }
+      final isSelected = device.id == selectedDeviceId;
+      final isActive = device.status.toLowerCase() == 'active';
+      final hasLiveData = livePositions.containsKey(device.deviceCode);
 
-       final marker = Marker(
-         point: point,
-         width: isSelected ? 30 : 20,
-         height: isSelected ? 30 : 20,
-         child: Container(
-           decoration: BoxDecoration(
-             shape: BoxShape.circle,
-             color: markerColor.withValues(alpha: 0.95),
-             border: Border.all(
-               color: Colors.white.withValues(alpha: 0.8),
-               width: isSelected ? 1.5 : 1,
-             ),
-             boxShadow: [
-               BoxShadow(
-                 color: markerColor.withValues(alpha: 0.4),
-                 blurRadius: 12,
-                 offset: const Offset(0, 4),
-               ),
-             ],
-           ),
-         ),
-       );
+      Color markerColor;
+      if (isSelected) {
+        markerColor = AppColors.brandBlue;
+      } else if (hasLiveData) {
+        // Bright color for devices with live data
+        markerColor = const Color(0xFF22C55E); // green for live
+      } else if (isActive) {
+        markerColor = const Color(0xFF38BDF8);
+      } else {
+        markerColor = AppColors.slate400;
+      }
 
-       markers.add(marker);
-     }
+      final marker = Marker(
+        point: point,
+        width: isSelected ? 30 : 20,
+        height: isSelected ? 30 : 20,
+        child: Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: markerColor.withValues(alpha: 0.95),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.8),
+              width: isSelected ? 1.5 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: markerColor.withValues(alpha: 0.4),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          // Show a pulsing dot for live devices
+          child: hasLiveData
+              ? Center(
+                  child: Container(
+                    width: isSelected ? 10 : 6,
+                    height: isSelected ? 10 : 6,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                    ),
+                  ),
+                )
+              : null,
+        ),
+      );
 
-     return MarkerLayer(markers: markers);
+      markers.add(marker);
+    }
+
+    return MarkerLayer(markers: markers);
   }
 }
 
