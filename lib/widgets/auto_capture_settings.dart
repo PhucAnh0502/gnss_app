@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gnss_app/constants/app_colors.dart';
 import 'package:gnss_app/providers/auto_capture_provider.dart';
-import 'package:gnss_app/providers/device_provider.dart';
 import 'package:gnss_app/services/auto_capture_service.dart';
 
 /// A card widget for configuring auto-capture settings.
@@ -14,7 +13,6 @@ class AutoCaptureSettings extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(autoCaptureProvider);
     final notifier = ref.read(autoCaptureProvider.notifier);
-    final devicesAsync = ref.watch(realtimeDevicesProvider);
 
     if (state.isLoading) {
       return const SizedBox.shrink();
@@ -63,43 +61,6 @@ class AutoCaptureSettings extends ConsumerWidget {
           if (state.enabled) ...[
             const SizedBox(height: 16),
             const Divider(color: AppColors.slate700, height: 1),
-            const SizedBox(height: 16),
-
-            // Device selector
-            const Text('Device', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.slate400)),
-            const SizedBox(height: 8),
-            devicesAsync.when(
-              loading: () => const SizedBox(height: 48),
-              error: (_, __) => const Text('Failed to load devices', style: TextStyle(color: AppColors.errorLight, fontSize: 12)),
-              data: (devices) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0B1730),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.slate700.withValues(alpha: 0.3)),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: state.deviceId,
-                      isExpanded: true,
-                      dropdownColor: const Color(0xFF0F1A30),
-                      borderRadius: BorderRadius.circular(14),
-                      hint: const Text('Select device', style: TextStyle(color: AppColors.slate500, fontSize: 13)),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.slate400, size: 20),
-                      style: const TextStyle(fontSize: 13, color: AppColors.textLight),
-                      items: devices.map((device) {
-                        return DropdownMenuItem<String>(
-                          value: device.id,
-                          child: Text('${device.deviceName} (${device.deviceCode})'),
-                        );
-                      }).toList(),
-                      onChanged: (value) => notifier.setDeviceId(value),
-                    ),
-                  ),
-                );
-              },
-            ),
             const SizedBox(height: 16),
 
             // Mode selector
@@ -179,7 +140,7 @@ class AutoCaptureSettings extends ConsumerWidget {
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
-                      'Auto capture runs when tracking is active. Restart tracking after changing settings.',
+                      'Auto capture uses this device automatically. Settings apply immediately when tracking is active.',
                       style: TextStyle(fontSize: 11, color: AppColors.slate400, height: 1.4),
                     ),
                   ),

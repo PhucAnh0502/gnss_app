@@ -191,13 +191,29 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
   bool get _isAndroid => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   void _startAutoCapture() {
-    // GnssService needs to be running for auto-capture to read position
-    final gnssService = GnssService();
-    // Start collection (may already be running in background, but safe to call)
-    gnssService.startCollection().then((_) {
-      AutoCaptureForegroundService.instance.start(gnssService);
-    }).catchError((e) {
-      print('[Tracking] Cannot start auto-capture GNSS: $e');
+    // Ensure auto-capture has the correct device ID (use tracking device code)
+    _syncAutoCaptureDeviceId().then((_) {
+      // GnssService needs to be running for auto-capture to read position
+      final gnssService = GnssService();
+      // Start collection (may already be running in background, but safe to call)
+      gnssService.startCollection().then((_) {
+        AutoCaptureForegroundService.instance.start(gnssService);
+      }).catchError((e) {
+        print('[Tracking] Cannot start auto-capture GNSS: $e');
+      });
     });
+  }
+
+  /// Sync the auto-capture device ID with the tracking device code.
+  Future<void> _syncAutoCaptureDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final trackingDeviceCode = prefs.getString(_trackingDeviceCodeKey)?.trim();
+    if (trackingDeviceCode != null && trackingDeviceCode.isNotEmpty) {
+      final currentAutoCaptureDeviceId = prefs.getString('auto_capture_device_id')?.trim();
+      if (currentAutoCaptureDeviceId != trackingDeviceCode) {
+        await prefs.setString('auto_capture_device_id', trackingDeviceCode);
+        print('[Tracking] Synced auto-capture device ID to: $trackingDeviceCode');
+      }
+    }
   }
 }

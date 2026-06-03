@@ -1,7 +1,11 @@
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/auto_capture_service.dart';
+import '../services/auto_capture_foreground_service.dart';
+import '../services/gnss_service.dart';
 
 class AutoCaptureState {
   const AutoCaptureState({
@@ -51,6 +55,16 @@ class AutoCaptureNotifier extends StateNotifier<AutoCaptureState> {
   Future<void> _loadFromPrefs() async {
     state = state.copyWith(isLoading: true);
     final prefs = await SharedPreferences.getInstance();
+
+    // Auto-resolve device ID from physical device
+    String? deviceId = prefs.getString(AutoCaptureKeys.deviceId)?.trim();
+    if (deviceId == null || deviceId.isEmpty) {
+      deviceId = await _resolveDeviceId();
+      if (deviceId != null && deviceId.isNotEmpty) {
+        await prefs.setString(AutoCaptureKeys.deviceId, deviceId);
+      }
+    }
+
     state = AutoCaptureState(
       enabled: prefs.getBool(AutoCaptureKeys.enabled) ?? false,
       mode: (prefs.getString(AutoCaptureKeys.mode) ?? 'timer') == 'distance'
@@ -59,39 +73,64 @@ class AutoCaptureNotifier extends StateNotifier<AutoCaptureState> {
       intervalSeconds: prefs.getInt(AutoCaptureKeys.intervalSeconds) ?? 60,
       distanceMeters: prefs.getDouble(AutoCaptureKeys.distanceMeters) ?? 100,
       quality: prefs.getString(AutoCaptureKeys.quality) ?? 'medium',
-      deviceId: prefs.getString(AutoCaptureKeys.deviceId),
+      deviceId: deviceId,
       isLoading: false,
     );
+  }
+
+  /// Resolve device ID from Android device info or SharedPreferences tracking_device_code.
+  Future<String?> _resolveDeviceId() async {
+    // Try tracking_device_code first (set by tracking provider)
+    final prefs = await SharedPreferences.getInstance();
+    final trackingDeviceCode = prefs.getString('tracking_device_code')?.trim();
+    if (trackingDeviceCode != null && trackingDeviceCode.isNotEmpty) {
+      return trackingDeviceCode;
+    }
+
+    // Fallback: resolve from Android device ID
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        return androidInfo.id.trim();
+      } catch (_) {}
+    }
+    return null;
   }
 
   Future<void> setEnabled(bool value) async {
     state = state.copyWith(enabled: value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(AutoCaptureKeys.enabled, value);
+    _restartAutoCaptureIfTracking();
   }
 
   Future<void> setMode(AutoCaptureMode mode) async {
     state = state.copyWith(mode: mode);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(AutoCaptureKeys.mode, mode == AutoCaptureMode.distance ? 'distance' : 'timer');
+    _restartAutoCaptureIfTracking();
   }
 
   Future<void> setInterval(int seconds) async {
     state = state.copyWith(intervalSeconds: seconds);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(AutoCaptureKeys.intervalSeconds, seconds);
+    _restartAutoCaptureIfTracking();
   }
 
   Future<void> setDistance(double meters) async {
     state = state.copyWith(distanceMeters: meters);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(AutoCaptureKeys.distanceMeters, meters);
+    _restartAutoCaptureIfTracking();
   }
 
   Future<void> setQuality(String quality) async {
     state = state.copyWith(quality: quality);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(AutoCaptureKeys.quality, quality);
+    _restartAutoCaptureIfTracking();
   }
 
   Future<void> setDeviceId(String? deviceId) async {
@@ -101,6 +140,23 @@ class AutoCaptureNotifier extends StateNotifier<AutoCaptureState> {
       await prefs.setString(AutoCaptureKeys.deviceId, deviceId);
     } else {
       await prefs.remove(AutoCaptureKeys.deviceId);
+    }
+  }
+
+  /// Restart auto-capture service if tracking is currently active.
+  /// This allows settings changes to take effect immediately without
+  /// requiring the user to manually restart tracking.
+  void _restartAutoCaptureIfTracking() {
+    final service = AutoCaptureForegroundService.instance;
+    if (!service.isRunning) return;
+
+    // Stop current auto-capture
+    service.stop();
+
+    // If still enabled, restart with new settings
+    if (state.enabled) {
+      final gnssService = GnssService();
+      service.start(gnssService);
     }
   }
 }
